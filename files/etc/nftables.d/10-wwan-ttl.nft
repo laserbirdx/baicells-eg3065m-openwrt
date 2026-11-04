@@ -1,0 +1,5 @@
+chain mangle_postrouting_wwan_ttl {
+	type filter hook postrouting priority 300; policy accept;
+	oifname "usb0" ip ttl set 65
+	oifname "usb0" ip6 hoplimit set 65
+}

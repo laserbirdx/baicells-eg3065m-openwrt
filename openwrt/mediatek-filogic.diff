@@ -1,0 +1,130 @@
+diff --git a/target/linux/mediatek/filogic/base-files/etc/board.d/01_leds b/target/linux/mediatek/filogic/base-files/etc/board.d/01_leds
+index 485f894a3c..334c97055e 100644
+--- a/target/linux/mediatek/filogic/base-files/etc/board.d/01_leds
++++ b/target/linux/mediatek/filogic/base-files/etc/board.d/01_leds
+@@ -6,6 +6,11 @@ board=$(board_name)
+ board_config_update
+ 
+ case $board in
++baicells,eg3065m-nr9)
++	ucidef_set_led_netdev "internet" "Internet" "green:internet" "usb0" "link tx rx"
++	ucidef_set_led_netdev "lte" "LTE" "green:lte" "usb0" "link"
++	ucidef_set_led_netdev "lteact" "LTE Activity" "yellow:lte" "usb0" "tx rx"
++	;;
+ airpi,ap3000m)
+ 	ucidef_set_led_netdev "wlan2g" "WLAN2G" "orange:wlan-2ghz" "phy0-ap0" "link tx rx"
+ 	ucidef_set_led_netdev "wlan5g" "WLAN5G" "white:wlan-5ghz" "phy1-ap0" "link tx rx"
+diff --git a/target/linux/mediatek/filogic/base-files/etc/board.d/02_network b/target/linux/mediatek/filogic/base-files/etc/board.d/02_network
+index d361829d31..ce60eda6ca 100644
+--- a/target/linux/mediatek/filogic/base-files/etc/board.d/02_network
++++ b/target/linux/mediatek/filogic/base-files/etc/board.d/02_network
+@@ -26,6 +26,9 @@ mediatek_setup_interfaces()
+ 		ucidef_set_interfaces_lan_wan "lan0 lan1 lan2" eth1
+ 		ucidef_set_interface "wan_sfp" device "eth2" protocol "none"
+ 		;;
++	baicells,eg3065m-nr9)
++		ucidef_set_interface_lan "lan1 lan2 lan3"
++		;;
+ 	acelink,ew-7886cax|\
+ 	tplink,eap683-lr)
+ 		ucidef_set_interface_lan "eth0" "dhcp"
+diff --git a/target/linux/mediatek/filogic/base-files/lib/upgrade/platform.sh b/target/linux/mediatek/filogic/base-files/lib/upgrade/platform.sh
+index 4b3ac2446d..72b52b29d2 100644
+--- a/target/linux/mediatek/filogic/base-files/lib/upgrade/platform.sh
++++ b/target/linux/mediatek/filogic/base-files/lib/upgrade/platform.sh
+@@ -1,6 +1,59 @@
+ REQUIRE_IMAGE_METADATA=1
+ RAMFS_COPY_BIN='fitblk fit_check_sign'
+ 
++baicells_le32()
++{
++	local v="$1"
++	printf "\\$(printf %03o $((v & 255)))\\$(printf %03o $(((v >> 8) & 255)))"
++	printf "\\$(printf %03o $(((v >> 16) & 255)))\\$(printf %03o $(((v >> 24) & 255)))"
++}
++
++# Stock U-Boot (mtkboardboot) boots the slot named in the user-data header and
++# checks CRC32 of the "kernel" and "rootfs" volumes against it. A CRC field of
++# 0xffffffff makes U-Boot skip that check.
++baicells_set_bootpart()
++{
++	local kernel_size="$1"
++	local rootfs_size="$2"
++	local mtd="/dev/mtd$(find_mtd_index user-data)"
++	local tmp="/tmp/user-data.bin"
++
++	dd if="$mtd" of="$tmp" bs=131072 count=1 2>/dev/null || return 1
++	[ "$(hexdump -n 4 -e '1/4 "%08x"' "$tmp")" = "12345678" ] || {
++		echo "invalid user-data header"
++		return 1
++	}
++
++	# boot slot 0 ("ubi")
++	{ baicells_le32 0; printf 'ubi\000'; } | \
++		dd of="$tmp" bs=1 seek=$((0x18)) conv=notrunc 2>/dev/null
++	# slot 0: kernel_crc, rootfs_crc, kernel_size, rootfs_size
++	{ printf '\377\377\377\377\377\377\377\377'
++	  baicells_le32 "$kernel_size"; baicells_le32 "$rootfs_size"; } | \
++		dd of="$tmp" bs=1 seek=$((0xa4)) conv=notrunc 2>/dev/null
++
++	mtd write "$tmp" user-data
++}
++
++baicells_eg3065m_do_upgrade()
++{
++	local file="$1"
++	local board_dir kernel_size rootfs_size
++
++	board_dir="$(tar tf "$file" | grep -m 1 '^sysupgrade-.*/$')"
++	board_dir="${board_dir%/}"
++	kernel_size="$(tar xOf "$file" "$board_dir/kernel" | wc -c)"
++	rootfs_size="$(tar xOf "$file" "$board_dir/root" | wc -c)"
++	[ "$kernel_size" -gt 0 ] && [ "$rootfs_size" -gt 0 ] || \
++		nand_do_upgrade_failed
++
++	baicells_set_bootpart "$kernel_size" "$rootfs_size" || \
++		nand_do_upgrade_failed
++
++	CI_UBIPART="ubi"
++	nand_do_upgrade "$file"
++}
++
+ asus_initial_setup()
+ {
+ 	# initialize UBI if it's running on initramfs
+@@ -252,6 +305,9 @@ platform_do_upgrade() {
+ 		CI_ROOTPART="rootfs"
+ 		emmc_do_upgrade "$1"
+ 		;;
++	baicells,eg3065m-nr9)
++		baicells_eg3065m_do_upgrade "$1"
++		;;
+ 	airtel,aap4221zy)
+ 		# ZyXEL zloader requires a "zyfwinfo" UBI volume with valid
+ 		# metadata (magic + checksum) to select the boot partition.
+diff --git a/target/linux/mediatek/image/filogic.mk b/target/linux/mediatek/image/filogic.mk
+index fb93679ab8..f2511628db 100644
+--- a/target/linux/mediatek/image/filogic.mk
++++ b/target/linux/mediatek/image/filogic.mk
+@@ -941,6 +941,21 @@ endif
+ endef
+ TARGET_DEVICES += bananapi_bpi-r4-lite
+ 
++define Device/baicells_eg3065m-nr9
++  DEVICE_VENDOR := Baicells
++  DEVICE_MODEL := EG3065M-NR9
++  DEVICE_DTS := mt7981b-baicells-eg3065m-nr9
++  DEVICE_DTS_DIR := ../dts
++  UBINIZE_OPTS := -E 5
++  BLOCKSIZE := 128k
++  PAGESIZE := 2048
++  KERNEL_INITRAMFS_SUFFIX := -recovery.itb
++  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
++  DEVICE_PACKAGES := kmod-usb3 kmod-mt7915e kmod-mt7981-firmware mt7981-wo-firmware \
++	kmod-usb-net-cdc-ncm kmod-usb-serial-option
++endef
++TARGET_DEVICES += baicells_eg3065m-nr9
++
+ define Device/bazis_ax3000wm
+   DEVICE_VENDOR := Bazis
+   DEVICE_MODEL := AX3000WM

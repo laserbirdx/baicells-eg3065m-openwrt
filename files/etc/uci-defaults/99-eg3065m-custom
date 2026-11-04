@@ -1,0 +1,44 @@
+#!/bin/sh
+
+uci -q batch <<-EOF
+	set system.@system[0].hostname='EG3065M-NR9'
+	set system.@system[0].zonename='Europe/Istanbul'
+	set system.@system[0].timezone='<+03>-3'
+	commit system
+	set luci.main.lang='tr'
+	commit luci
+EOF
+
+# 5G WAN is dialed by QModem. The RG500U-EB exposes four NCM functions (one
+# per PDN) and PDN 1 lands on usb0, but QModem defaults to the last one.
+uci -q batch <<-EOF
+	delete network.wan
+	delete network.wan6
+	commit network
+	set qmodem.slot_2_1=modem-slot
+	set qmodem.slot_2_1.slot='2-1'
+	set qmodem.slot_2_1.type='usb'
+	set qmodem.slot_2_1.ethernet_5g='usb0'
+	commit qmodem
+EOF
+
+[ -n "$(uci -q show wireless | grep '=wifi-device')" ] || /sbin/wifi config
+
+for radio in $(uci -q show wireless | sed -n 's/^wireless\.\([^.]*\)=wifi-device$/\1/p'); do
+	band="$(uci -q get wireless.$radio.band)"
+	case "$band" in
+	2g) ssid='EG3065M-NR9' ;;
+	5g) ssid='EG3065M-NR9_5G' ;;
+	*) continue ;;
+	esac
+	uci -q batch <<-EOF
+		set wireless.$radio.country='TR'
+		set wireless.$radio.disabled='0'
+		set wireless.default_$radio.ssid='$ssid'
+		set wireless.default_$radio.encryption='none'
+		set wireless.default_$radio.disabled='0'
+	EOF
+done
+uci commit wireless
+
+exit 0
