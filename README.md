@@ -1,3 +1,5 @@
+![OpenWrt on Baicells EG3065M-NR9](assets/banner.webp)
+
 # OpenWrt for Baicells EG3065M-NR9
 
 OpenWrt port for the Baicells EG3065M-NR9 5G CPE (MediaTek MT7981, built-in Quectel
