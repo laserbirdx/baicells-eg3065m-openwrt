@@ -2,7 +2,12 @@
 
 # OpenWrt for Baicells EG3065M-NR9
 
-![OpenWrt: Custom Port](https://img.shields.io/badge/OpenWrt-Custom%20Port-00B5E2?logo=openwrt&logoColor=white) ![SoC: MediaTek MT7981B](https://img.shields.io/badge/SoC-MediaTek%20MT7981B-informational) ![modem: 5G NR (RG500U-EB)](https://img.shields.io/badge/modem-5G%20NR%20(RG500U--EB)-success) ![license: GPL-2.0](https://img.shields.io/badge/license-GPL--2.0-blue)
+<p align="center">
+  <img src="https://img.shields.io/badge/OpenWrt-Custom%20Port-00B5E2?logo=openwrt&logoColor=white" alt="OpenWrt: Custom Port" />
+  <img src="https://img.shields.io/badge/SoC-MediaTek%20MT7981B-informational" alt="SoC: MediaTek MT7981B" />
+  <img src="https://img.shields.io/badge/modem-5G%20NR%20%28RG500U--EB%29-success" alt="modem: 5G NR (RG500U-EB)" />
+  <img src="https://img.shields.io/badge/license-GPL--2.0-blue" alt="license: GPL-2.0" />
+</p>
 
 OpenWrt port for the Baicells EG3065M-NR9 5G CPE (MediaTek MT7981, built-in Quectel
 RG500U-EB 5G modem). The stock firmware is the Safaricom (Kenya) build.
